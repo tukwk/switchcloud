@@ -1,221 +1,143 @@
 # switchcloud
 
-**Русский** · [English](README.en.md) · v0.1
+A SoundCloud-style music player for modded Nintendo Switch (Atmosphère / homebrew).
+Plays local files from the SD card, searches SoundCloud, resolves playlists (including
+your own private ones with an OAuth token) and caches tracks for offline listening.
 
-SoundCloud-подобный музыкальный плеер для прошитой Nintendo Switch (Atmosphère / homebrew).
-Играет локальные файлы с SD-карты, ищет треки на SoundCloud (через неофициальный API) и
-сохраняет их в офлайн-кэш.
+**English** · [Русский](README.ru.md) · v0.1
 
-```
-        ┌──────────────────────────────────────────────┐
-        │  switchcloud — твоя музыка. Офлайн.          │
-        │  локальные MP3/FLAC/OGG  +  SoundCloud       │
-        └──────────────────────────────────────────────┘
-```
+## Features
 
-## Что уже умеет
+- **Local library**: scans `sdmc:/switch/scswitch/music`, `sdmc:/music`, `sdmc:/Music`
+  recursively; "Scan whole SD" searches the entire card. Reads ID3v2/ID3v1 tags and
+  falls back to `Artist - Title.mp3`.
+- **Playback**: MP3 (dr_mp3), FLAC (dr_flac), OGG/Vorbis (stb_vorbis) and AAC/M4A via
+  libavformat/libavcodec. Custom windowed-sinc resampler 44.1→48 kHz, output through
+  `audout` (48 kHz, stereo, s16).
+- **SoundCloud**: track search, public playlist search, open playlist/account URLs,
+  private playlists via an OAuth token, download to the cache and play offline.
+- **HLS/AAC**: when a track has no progressive MP3, the HLS (fMP4) stream is downloaded
+  into `cache/sc_<id>.m4a` and decoded with FFmpeg — offline playback included.
+- **UI**: 1280×720 dark theme, gamepad + touch controls, software keyboard, likes,
+  queue, shuffle, downloads, settings.
+- **Bypass**: SOCKS5 / HTTP CONNECT proxy support (including a helper that exposes the
+  PC's VPN route to the Switch).
 
-- **Локальная библиотека**: рекурсивно сканирует `sdmc:/switch/scswitch/music`, `sdmc:/music`,
-  `sdmc:/Music`. В настройках есть «Сканировать всю SD» — ищет аудио по всей карте, пропуская
-  системные папки. Читает ID3v2/ID3v1 (название, исполнитель, альбом), иначе разбирает `Artist - Title.mp3`.
-  Плейлисты SoundCloud в библиотеку не попадают: приложение не логинится в аккаунт, это только файлы.
-- **Воспроизведение**: MP3 (dr_mp3), FLAC (dr_flac), OGG/Vorbis (stb_vorbis),
-  AAC/M4A через libavformat/libavcodec. Собственный windowed-sinc ресемплер 44.1→48 кГц,
-  вывод через `audout` (48 кГц, стерео, s16).
-- **SoundCloud**: поиск треков и **публичных плейлистов**, открытие плейлиста/аккаунта по ссылке
-  (`soundcloud.com/...`), скачивание всего плейлиста в офлайн-кэш.
-- **HLS/AAC**: если у трека нет progressive MP3, приложение скачивает HLS (fMP4) в
-  `cache/sc_<id>.m4a` и декодирует AAC через FFmpeg — трек тоже играет офлайн.
-- **Кэш**: `cache/sc_<id>.mp3` (progressive) или `cache/sc_<id>.m4a` (HLS).
-- **Плейлисты**: «Мне нравится» (♥) и очередь воспроизведения, перемешивание.
-- **Интерфейс**: 1280×720, тёмная тема в духе SoundCloud, геймпад + экранная клавиатура (swkbd).
-- **Настройки**: client_id, язык (RU/EN), папка музыки, SOCKS5/HTTP-прокси, OAuth,
-  строгая/нестрогая проверка TLS, пересканирование и скан всей SD.
-- **Тач-управление**: кнопки «назад/плей-пауза/вперёд» и перемотка по волне.
-- Всё состояние — обычные файлы на SD, никаких баз данных.
+## Requirements
 
-## Требования
+- Atmosphère + hbmenu (title override is required for audio).
+- devkitPro with `devkitA64`, `libnx`, `switch-mbedtls` and the FFmpeg portlibs
+  (`libavformat`, `libavcodec`, `libavutil`, `libswresample`).
+- Python 3 + Pillow only to regenerate the font/icon (already committed).
 
-- Прошивка с homebrew-загрузчиком (Atmosphère + hbmenu).
-- [devkitPro](https://devkitpro.org/wiki/Getting_Started) с `devkitA64`, `libnx`,
-  `switch-mbedtls` и FFmpeg-портлибами (`libavformat`, `libavcodec`, `libavutil`, `libswresample`).
-  В этой машине используется локальная сборка: `DEVKITPRO=/opt/devkitpro`.
-- Python 3 + Pillow — только для генерации шрифта/иконки (уже сгенерированы и лежат в репозитории).
-
-## Сборка
+## Build
 
 ```bash
-export DEVKITPRO=/opt/devkitpro   # или /opt/devkitpro
-make
-# → build/scswitch.nro
+export DEVKITPRO=/opt/devkitpro      # or your local devkitPro path
+make                                  # → build/scswitch.nro
+make test                             # host tests: JSON parser + resampler
+make dist                             # dist/switchcloud-<date>.zip
 ```
 
-`make clean` — очистить. Компилируется без `-fexceptions/-frtti`, поэтому бинарник компактный
-(~1.2 МБ). Если в системе нет `sysbase.specs`, Makefile сам выберет обычную схему линковки
-(стандартный devkitPro).
+No exceptions/RTTI; the NRO is self-contained. `tools/check_relocs.py` runs during the
+build and refuses relocations that would land in the read-only NRO segment.
 
-Быстрые хостовые тесты логики (JSON-парсер и ресемплер, без Switch):
+## Install
 
-```bash
-make test
-```
-
-`make dist` собирает `dist/switchcloud-<дата>.zip` с `.nro` и README.
-
-## Установка на Switch
-
-1. Скопируй `build/scswitch.nro` в `sd:/switch/scswitch.nro`.
-2. Запусти из hbmenu.
-3. Создай папки (приложение создаст их само, но можно заранее):
+1. Copy `build/scswitch.nro` to `sd:/switch/scswitch.nro`.
+2. Launch hbmenu via **title override**: hold **R** on a game and start it (audio is not
+   available in Applet Mode).
+3. Optional folders:
 
 ```
 sd:/switch/scswitch/
-├── config.cfg          # появится после сохранения настроек
+├── config.cfg
 ├── likes.txt
-├── log.txt             # отладочный лог
-├── music/              # сюда кидай свои mp3/flac/ogg
-├── cache/              # скачанные треки SoundCloud
-└── cacert.pem          # опционально: свой CA-бандл
+├── log.txt
+├── music/          # your local files
+├── cache/          # downloaded SoundCloud tracks
+└── cacert.pem      # optional custom CA bundle
 ```
 
-Встроенный CA-бандл уже внутри `.nro` (Mozilla, `data/ca_bundle.pem`), так что HTTPS работает
-из коробки. Если положить `sdmc:/switch/scswitch/cacert.pem`, он имеет приоритет.
+## Configuration
 
-## Обход блокировки (прокси)
+`config.cfg`:
 
-Приложение умеет ходить в SoundCloud через SOCKS5 или HTTP CONNECT-прокси.
-Формат в настройках:
-
+```ini
+client_id=<SoundCloud client id>
+proxy=socks5://192.168.1.10:10808
+oauth_token=<optional OAuth token>
+music_dir=sdmc:/switch/scswitch/music
+cache_dir=sdmc:/switch/scswitch/cache
+insecure_tls=0
+lang=ru
 ```
-socks5://192.168.1.10:10808
-http://192.168.1.10:7890
-socks5://user:pass@192.168.1.10:10808
-```
 
-Проще всего поднять прокси на ПК, у которого уже есть рабочий VPN/обход, и направить Switch на ПК:
+- `client_id`: open soundcloud.com in a browser → DevTools → Network → copy `client_id`
+  from an `api-v2.soundcloud.com` request. Or run `python3 tools/get_client_id.py`.
+- `oauth_token`: sign in on soundcloud.com → DevTools → Application → Cookies →
+  `oauth_token`. Needed for your own private playlists.
+- `proxy`: SOCKS5 (`socks5://host:port`) or HTTP CONNECT (`http://host:port`), optional
+  `user:pass@`. If the proxy is unreachable the request falls back to a direct one.
+- `lang`: `ru` or `en` (also switchable in Settings).
+
+### Bypass helper
 
 ```bash
-tools/start_bypass.sh          # LAN SOCKS5 на 0.0.0.0:10808
+tools/start_bypass.sh
 ```
 
-Скрипт выведет адрес вида `socks5://192.168.x.x:10808` — впиши его в «Настройки → Прокси / обход».
-Switch и ПК должны быть в одной Wi-Fi/LAN-сети, ПК включён, VPN на ПК активен. Прокси не
-аутентифицирует клиентов, поэтому держи его только в домашней сети и не пробрасывай наружу.
+Starts a LAN SOCKS5 proxy on the PC, detects its LAN IP, prints
+`socks5://<ip>:10808` and updates `config.cfg` over MTP when the SD card is mounted.
+The PC must be on the same network as the Switch and its VPN must be connected.
 
-## Мои плейлисты (OAuth)
+## Controls
 
-Чтобы видеть свои плейлисты, включая закрытые:
-
-1. Войди на `soundcloud.com` в браузере на ПК.
-2. DevTools → Application → Cookies → `https://soundcloud.com` → скопируй `oauth_token`.
-3. На Switch: Настройки → **OAuth token** → вставь.
-4. Раздел «Плейлисты» → **L** — загрузятся твои плейлисты (включая private).
-5. **A** открыть, **Y** скачать все треки.
-
-Токен даёт доступ к аккаунту — хранится в `config.cfg` на SD, никому не передавай.
-
-## Если трек отдаётся только через HLS
-
-Многие треки SoundCloud не имеют progressive MP3 (только HLS/AAC), и встроенный
-плеер их не скачает/не проиграет. Такие треки можно один раз скачать на ПК и закинуть
-на SD как обычные файлы:
-
-```bash
-# нужен ffmpeg + yt-dlp
-tools/fetch_playlist.sh 'https://soundcloud.com/user/sets/playlist'
-```
-
-Скрипт скачает плейлист в mp3 и скопирует в `sd:/switch/scswitch/music/zzzzz/`.
-После этого на Switch: «Моя музыка» → **Y** (пересканировать).
-
-## Client ID SoundCloud
-
-Официального публичного API для сторонних плееров у SoundCloud нет. Приложение использует
-`api-v2.soundcloud.com` с твоим **client_id** — тем самым, который использует веб-плеер:
-
-1. Открой `soundcloud.com` в браузере на ПК, F12 → Network.
-2. Найди любой запрос к `api-v2.soundcloud.com`.
-3. Скопируй `client_id=...` из URL.
-4. На Switch: «Настройки» → `client_id SoundCloud` → A → вставь значение.
-
-Ключ периодически меняется — свежий можно достать скриптом:
-
-```bash
-python3 tools/get_client_id.py                 # найдёт и проверит ключ
-python3 tools/get_client_id.py --write <config.cfg>
-```
-
-Без ключа поиск и загрузка отключаются, локальная музыка работает всегда.
-Помни: это неофициальный API, он может меняться, а использование может нарушать ToS SoundCloud.
-Ключ хранится открытым текстом в `config.cfg` — не выкладывай его.
-
-## Важно про запуск (аудио)
-
-Если hbmenu открыт из «Альбома» (applet mode), `audout` возвращает `0xd401` и звука не будет.
-Запускай hbmenu **через title override**: зажми R на иконке игры и запусти её, либо используй
-hbmenu в виде NSP/forwarder. Приложение покажет предупреждение «аудио: applet mode?».
-
-Английский интерфейс включён по умолчанию; русский переключается в «Настройки → Язык / Language».
-
-## Управление
-
-| Кнопка | Действие |
+| Input | Action |
 |---|---|
-| ↑/↓ (крестовина и стик) | выбор строки |
-| ←/→ | ±10 секунд (только в полноэкранном плеере) |
-| A | играть / пауза / открыть клавиатуру / выбрать |
-| B | назад |
-| X | ♥ (в «Загрузках» — удалить, в «Плейлистах» — открыть ссылку) |
-| Y | контекст: поиск / скан / скачать плейлист / вкл-выкл перемешивание |
-| ZL / ZR | разделы (в плеере — предыдущий/следующий трек) |
-| L / R | громкость |
-| + | пауза/продолжить |
-| − | полноэкранный плеер |
-| касание | кнопки prev/play/next и перемотка по волне |
+| ↑/↓ or left stick | select a row |
+| ←/→ | seek ±10 s (full-screen player) |
+| A | play / pause / confirm / open keyboard |
+| B | back |
+| X | ♥ (delete in Downloads, open URL in Playlists) |
+| Y | context: search / rescan / download playlist / shuffle |
+| ZL / ZR | sections (previous/next track in the player) |
+| L / R | volume |
+| + | pause/resume |
+| − | full-screen player |
+| Touch | prev / play / next buttons and the waveform seek bar |
 
-## Структура проекта
+English is the default UI language; Russian can be selected in Settings → Language.
+
+## Known limitations
+
+- HLS support covers unencrypted fMP4 (`EXT-X-MAP` + `.m4s`), no AES-128.
+- AAC/M4A audio is supported, MP4 video is not.
+- No account feed/likes sync; playlists only.
+- `client_id` rotates; refresh it with `tools/get_client_id.py`.
+- Some tracks expose only a 30-second preview or no progressive/HLS stream at all.
+- SoundCloud's private API use may violate its Terms of Service; use at your own risk.
+
+## License
+
+The project is **GPL-3.0** (see `LICENSE`) because it statically links the GPL build of
+FFmpeg from devkitPro. Third-party components and their licenses are listed in
+`THIRD_PARTY.md`.
+
+## Layout
 
 ```
 source/
-├── main.cpp        # состояние приложения, экраны, ввод, отрисовка
-├── gfx.*           # софтверный рендер в framebuffer + шрифт 8×16 (UTF-8, кириллица)
-├── audio.*         # декодеры dr_mp3/dr_flac/stb_vorbis, audout, поток декодирования
-├── resampler.h     # windowed-sinc ресемплер 44.1→48 кГц
-├── http.*          # HTTPS-клиент на mbedTLS + libnx-сокетах (chunked, редиректы, загрузка в файл)
-├── json.*          # минимальный JSON-парсер
-├── sc.*            # api-v2: поиск, resolve progressive-транскодинга
-├── library.*       # сканирование SD, ID3, кэш-индекс
-├── core.*          # конфиг, утилиты, лайки, лог
-├── i18n.*          # словарь RU/EN
-├── font8x16.h      # сгенерированный шрифт (tools/genfont.py)
-└── third_party/    # dr_mp3.h, dr_flac.h, stb_vorbis.c
+├── main.cpp        screens, input (pad + touch), i18n-wrapped UI
+├── gfx.*           software framebuffer renderer + 8×16 UTF-8 font
+├── audio.*         decoders, audout output, FFmpeg AAC/HLS playback
+├── resampler.h     windowed-sinc 44.1→48 kHz resampler
+├── hls.*           m3u8/fMP4 downloader
+├── http.*          HTTPS client (mbedTLS, proxy, redirects, timeouts)
+├── json.*          minimal JSON parser
+├── sc.*            api-v2: search, playlists, OAuth, transcodings
+├── library.*       SD scanner, ID3, cache index
+├── core.*          config, utils, likes, logging
+├── i18n.*          RU/EN dictionary
+└── third_party/    dr_mp3, dr_flac, stb_vorbis
 ```
-
-## Известные ограничения
-
-- HLS поддерживается только для незашифрованных fMP4 (`EXT-X-MAP` + `.m4s`), без AES-128.
-- M4A/AAC проигрывается, MP4-видео — нет (аудио-дорожка тоже не извлекается).
-- Обложек нет — вместо них генерируется градиентная «виниловая» заглушка.
-- Скачивание идёт целиком до начала воспроизведения (зато потом офлайн).
-- Неофициальный API SoundCloud; при смене ключей/эндпоинтов поиск может перестать работать
-  (ключ обновляется через `tools/get_client_id.py`).
-- Аккаунт SoundCloud не поддерживается: приватные плейлисты и лайки аккаунта недоступны,
-  «Мне нравится» — это локальные лайки, поставленные кнопкой X.
-- Некоторые треки отдают только 30-секундный preview; зашифрованный HLS (AES-128) не поддерживается.
-- TLS-проверка требует корректных системных часов Switch. Если ошибка TLS/времени —
-  включи в настройках «TLS без проверки» (трафик тогда уязвим к MITM) или поправь время.
-- `-Wl,-z,notext` нужен из-за статического libstdc++ этой сборки (RTTI-таблицы в rodata);
-  libnx применяет RELATIVE-релокации при старте.
-
-## Лицензия
-
-Код — **GPL-3.0** (см. `LICENSE`), потому что проект статически линкует GPL-сборку FFmpeg
-из devkitPro. Сторонние компоненты и их лицензии — в `THIRD_PARTY.md`.
-
-## Отладка
-
-Лог: `sd:/switch/scswitch/log.txt` (дописывается при каждом запуске).
-Там видно инициализацию аудио, CA-бандла, ошибки TLS/HTTP и стек задач.
-
-Если приложение не стартует — проверь, что `.nro` собран под AArch64 (elf2nro), и что
-`hbmenu` свежий. Для запуска по сети удобно `nxlink -s build/scswitch.nro`.
