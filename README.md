@@ -1,6 +1,6 @@
 # switchcloud
 
-A SoundCloud-style music player for modded Nintendo Switch (Atmosphère / homebrew).
+A SoundCloud and offline music player for modded Nintendo Switch (Atmosphère / homebrew).
 Plays local files from the SD card, searches SoundCloud, resolves playlists (including
 your own private ones with an OAuth token) and caches tracks for offline listening.
 
